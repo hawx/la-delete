@@ -11,16 +11,11 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/shkh/lastfm-go/lastfm"
+	"hawx.me/code/xdg"
 )
 
 var (
-	auth      = flag.String("auth", "", "")
-	apiKey    = flag.String("api-key", "", "")
-	apiSecret = flag.String("api-secret", "", "")
-	token     = flag.String("token", "", "")
-	username  = flag.String("username", "", "")
-	password  = flag.String("password", "", "")
-
+	auth  = flag.String("auth", "", "")
 	after = flag.String("after", "730h", "")
 	save  = flag.String("save", "", "")
 	help  = flag.Bool("help", false, "")
@@ -31,11 +26,6 @@ const HELP = `Usage: la-delete [options]
   Deletes old scrobbles. Note: If --save is not given data is not saved!
 
     --auth PATH         # Path to file with auth details
-    --api-key KEY
-    --api-secret SECRET
-    --username USER
-    --password PASS     # Can be md5 hash of password
-
     --after DUR         # Duration to delete after (default: '730h')
     --save DIR          # Directory to save scrobbles to
     --help              # Display this help message
@@ -78,36 +68,22 @@ func main() {
 		return
 	}
 
-	var (
-		api  *lastfm.Api
-		user string
-	)
-
+	authPath := xdg.Config("la-delete/auth")
 	if *auth != "" {
-		var conf struct {
-			ApiKey, ApiSecret, Username, Password string
-		}
+		authPath = *auth
+	}
 
-		if _, err := toml.DecodeFile(*auth, &conf); err != nil {
-			log.Fatal(err)
-		}
+	var conf struct {
+		ApiKey, ApiSecret, Username, Password string
+	}
 
-		user = conf.Username
-		api = lastfm.New(conf.ApiKey, conf.ApiSecret)
-		if err := api.Login(conf.Username, conf.Password); err != nil {
-			log.Fatal(err)
-		}
+	if _, err := toml.DecodeFile(authPath, &conf); err != nil {
+		log.Fatal(err)
+	}
 
-	} else if *apiKey != "" && *apiSecret != "" && *username != "" && *password != "" {
-		user = *username
-		api = lastfm.New(*apiKey, *apiSecret)
-		if err := api.Login(*username, *password); err != nil {
-			log.Fatal(err)
-		}
-
-	} else {
-		fmt.Println(`Either the --auth flag should be set;
-Or credentials must be given using --api-key, --api-secret, etc.`)
+	api := lastfm.New(conf.ApiKey, conf.ApiSecret)
+	if err := api.Login(conf.Username, conf.Password); err != nil {
+		log.Fatal(err)
 	}
 
 	dur, err := time.ParseDuration(*after)
@@ -122,7 +98,7 @@ Or credentials must be given using --api-key, --api-secret, etc.`)
 
 	for {
 		result, _ := api.User.GetRecentTracks(lastfm.P{
-			"user":  user,
+			"user":  conf.Username,
 			"to":    time.Now().UTC().Add(-dur).Unix(),
 			"limit": 200,
 		})
